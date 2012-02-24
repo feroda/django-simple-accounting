@@ -16,6 +16,8 @@
 
 from django.conf import settings 
 from django.db import models
+from django.db import transaction as db_transaction
+
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.utils.translation import ugettext, ugettext_lazy as _
@@ -29,7 +31,7 @@ from simple_accounting.fields import CurrencyField
 from simple_accounting.managers import AccountManager, TransactionManager
 from simple_accounting.exceptions import MalformedAccountTree, SubjectiveAPIError, InvalidAccountingOperation, MalformedPathString
 
-from datetime import datetime
+import datetime
 
 
 class Subject(models.Model):
@@ -97,7 +99,6 @@ class SubjectDescriptor(object):
     def __set__(self, instance, value):
         raise AttributeError(ugettext(u"This is a read-only attribute"))
 
-
 def economic_subject(cls):
     """
     This function is meant to be used as a class decorator for augmenting subjective models.
@@ -152,6 +153,9 @@ def economic_subject(cls):
         if created:
             ct = ContentType.objects.get_for_model(sender)
             Subject.objects.create(content_type=ct, object_id=instance.pk)
+            # call the ``.setup_accounting()`` method on the sender model, if defined
+            if getattr(instance, 'setup_accounting', None):     
+                instance.setup_accounting()
             
     # clean-up dangling subjects after a subjective model instance is deleted from the DB
     @receiver(post_delete, sender=model, weak=False)
@@ -164,17 +168,6 @@ def economic_subject(cls):
     subjective_models.append(model)
     
     return model
-
-## Signals
-# setup accounting-related things for *every* model
-# implementing a ``.setup_accounting()`` method.
-@receiver(post_save)
-def setup_accounting(sender, instance, created, **kwargs):
-    if created:
-    # call the ``.setup_accounting()`` method on the sender model, if defined
-        if getattr(instance, 'setup_accounting', None):     
-            instance.setup_accounting()
-            
 
 class AccountType(models.Model):
     """
@@ -260,6 +253,13 @@ class BasicAccountTypeDict(dict):
     If the given key is not a valid name for a basic account type 
     (as defined by ``AccountType.BASIC_ACCOUNT_TYPES``), raise a ``KeyError``.
     """
+    _type_d = {
+        'ROOT' : AccountType.ROOT,
+        'INCOME' : AccountType.INCOME,
+        'EXPENSE' : AccountType.EXPENSE,
+        'ASSET' : AccountType.ASSET,
+        'LIABILITY' : AccountType.LIABILITY,
+    }
     
     def __getitem__(self, key):
 
@@ -269,7 +269,12 @@ class BasicAccountTypeDict(dict):
         try:
             rv = super(BasicAccountTypeDict, self).__getitem__(key)
         except KeyError:
-            rv = self[key] = AccountType.objects.get(name=key)
+            try:
+                account_type = AccountType.objects.get(name=key)
+            except AccountType.DoesNotExist:
+                base_type = BasicAccountTypeDict._type_d[key]
+                account_type = AccountType.objects.create(name=key, base_type=base_type)
+            rv = self[key] = account_type
         return rv
 
 
@@ -401,10 +406,12 @@ class AccountSystem(models.Model):
         
         Path string syntax 
         ==================    
+
         A valid path string must begin with a single ``ACCOUNT_PATH_SEPARATOR`` string occurrence; it must end with a string
         *different* from ``ACCOUNT_PATH_SEPARATOR`` (unless the path string is just ``ACCOUNT_PATH_SEPARATOR``). 
         Path components are separated by a single ``ACCOUNT_PATH_SEPARATOR`` string occurrence, and they represent account names.
         """
+
         path = path.strip() # strip leading and trailing whitespaces
         self._validate_account_path(path)
         # normalize paths so they end with ``ACCOUNT_PATH_SEPARATOR``
@@ -414,6 +421,7 @@ class AccountSystem(models.Model):
         path_components = path.split(ACCOUNT_PATH_SEPARATOR)
         path_components = path_components[1:] # strip initial '' component
         # corner case       
+
         if len(path_components) == 1: # i.e. path == '/'
             return self.root  
         else:
@@ -425,7 +433,6 @@ class AccountSystem(models.Model):
                     account = account.get_child(path_components[0])
                     path_components = path_components[1:]
 
-            
     def add_account(self, parent_path, name, kind, is_placeholder=False):
         """
         Add an account to this accounting system, based on given specifications.
@@ -455,7 +462,6 @@ class AccountSystem(models.Model):
         If this accounting systems already has a root account, raise ``InvalidAccountingOperation``.
         """
         Account.objects.create(system=self, parent=None, name='', kind=account_type.root, is_placeholder=True)
-        
         
            
 class Account(models.Model):
@@ -532,7 +538,10 @@ class Account(models.Model):
         """
         if self.is_root: # stop recursion
             return ACCOUNT_PATH_SEPARATOR
-        path = Account.path(self.parent) + ACCOUNT_PATH_SEPARATOR + self.name # recursion
+        path = self.parent.path 
+        if not self.parent.is_root:
+            path += ACCOUNT_PATH_SEPARATOR
+        path += self.name # recursion
         return path 
     
     @property
@@ -762,12 +771,16 @@ class Split(models.Model):
                 assert not self.entry_point
             except AssertionError:
                 raise ValidationError(ugettext(u"If no exit-point is set for a split, no entry-point must be set, either."))      
-        ## ``entry_point`` must be a flux-like account
-        if not self.entry_point.is_flux:
-                raise ValidationError(ugettext(u"Entry-points must be flux-like accounts"))
-        ## ``exit_point`` must be a flux-like account
-        if not self.exit_point.is_flux:
-                raise ValidationError(ugettext(u"Exit-points must be flux-like accounts"))
+        else:
+            ## ``exit_point`` must be a flux-like account
+            if not self.exit_point.is_flux:
+                    raise ValidationError(ugettext(u"Exit-points must be flux-like accounts"))
+
+        if self.entry_point:
+            ## ``entry_point`` must be a flux-like account
+            if not self.entry_point.is_flux:
+                    raise ValidationError(ugettext(u"Entry-points must be flux-like accounts"))
+
         ## ``target`` must be a stock-like account
         if not self.target.account.is_stock:
                 raise ValidationError(ugettext(u"Target must be a stock-like account"))
@@ -827,7 +840,7 @@ class Transaction(models.Model):
      
     """   
     # when the transaction happened
-    date = models.DateTimeField(default=datetime.now)
+    date = models.DateTimeField(default=datetime.datetime.now)
     # what the transaction represents
     description = models.CharField(max_length=512, help_text=_("Reason of the transaction"))
     # who triggered the transaction
@@ -898,6 +911,9 @@ class Transaction(models.Model):
     
     # model-level custom validation goes here
     def clean(self):
+        if self.pk is None:
+            return
+
         ## check that the *law of conservation of money* is satisfied
         flows = [self.source]
         for split in self.splits:
@@ -934,6 +950,9 @@ class Transaction(models.Model):
         
     def save(self, *args, **kwargs):
         # perform model validation
+        if not self.date:
+            self.date = datetime.datetime.now() 
+
         self.full_clean()
         super(Transaction, self).save(*args, **kwargs)
             
@@ -963,7 +982,42 @@ class Transaction(models.Model):
         """
         for ref in refs:
             self.add_reference(ref)           
-            
+
+    @property
+    def amount(self):
+        return self.source.amount
+
+
+    @amount.setter
+    def set_amount(self, amount):
+        
+        amount = abs(amount)
+        if self.split_set.count() > 1:
+            raise ProgrammingError("How can we distribute"
+                "a single value 'amount' among many"    
+                "splits destination?"
+            )
+        target = self.splits[0]
+
+        with db_transaction.commit_on_success():
+
+            for le in self.ledger_entries:
+                if le.amount < 0:
+                    le.amount = -amount
+                else:
+                    le.amount = amount
+                le.save()
+
+            if self.source.amount < 0:
+                self.source.amount = -amount
+                target.amount = amount
+            else:
+                self.source.amount = amount
+                target.amount = amount
+
+            self.source.save()
+            target.save()
+
         
 class TransactionReference(models.Model):
     """
@@ -1037,7 +1091,8 @@ class LedgerEntry(models.Model):
             raise AttributeError("Source accounts for transactions don't belong to any split")
         else:            
             for split in self.transaction.splits:
-                if self.account in split.accounts: return split
+                if self.account in split.accounts: 
+                    return split
     
     @property
     def description(self):
@@ -1072,7 +1127,10 @@ class LedgerEntry(models.Model):
         Get the first available integer to be used as an ID for this entry in the ledger.
         """
         existing_entries = self.account.ledger_entries
-        next_id = max([entry.id for entry in existing_entries]) + 1
+        try:
+            next_id = max([entry.id for entry in existing_entries]) + 1
+        except ValueError:
+            next_id = 1
         return next_id
         
     
