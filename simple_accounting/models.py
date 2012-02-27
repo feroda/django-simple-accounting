@@ -926,7 +926,8 @@ class Transaction(models.Model):
         ## check that exit-points belong to the same accounting system as the source account
         for split in self.splits:
             try:
-                assert split.exit_point.system == self.source.system
+                if split.exit_point:
+                    assert split.exit_point.system == self.source.system
             except AssertionError:
                 raise ValidationError(ugettext(u"Exit-points must belong to the same accounting system as the source account"))        
         ## for internal transactions, check that target accounts belong 
@@ -941,10 +942,12 @@ class Transaction(models.Model):
         ## check that no account involved in this transaction is a placeholder one
         involved_accounts = [self.source.account]
         for split in self.splits:
-            involved_accounts += [split.exit_point, split.entry_point, split.target.account]
+            involved_accounts += [x for x in [
+                split.exit_point, split.entry_point, split.target.account
+            ] if x is not None]
         for account in involved_accounts:
             try:
-                assert not account.placeholder 
+                assert not account.is_placeholder 
             except AssertionError:
                 raise ValidationError(ugettext(u"Placeholder accounts can't directly contain transactions, only sub-accounts"))
         
@@ -983,13 +986,10 @@ class Transaction(models.Model):
         for ref in refs:
             self.add_reference(ref)           
 
-    @property
-    def amount(self):
+    def _get_amount(self):
         return self.source.amount
 
-
-    @amount.setter
-    def set_amount(self, amount):
+    def _set_amount(self, amount):
         
         amount = abs(amount)
         if self.split_set.count() > 1:
@@ -997,7 +997,7 @@ class Transaction(models.Model):
                 "a single value 'amount' among many"    
                 "splits destination?"
             )
-        target = self.splits[0]
+        target = self.splits[0].target
 
         with db_transaction.commit_on_success():
 
@@ -1013,10 +1013,12 @@ class Transaction(models.Model):
                 target.amount = amount
             else:
                 self.source.amount = amount
-                target.amount = amount
+                target.amount = -amount
 
             self.source.save()
             target.save()
+
+    amount = property(_get_amount, _set_amount)
 
         
 class TransactionReference(models.Model):
