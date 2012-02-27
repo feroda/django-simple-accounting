@@ -408,12 +408,21 @@ def update_transaction(transaction, **kwargs):
     3) generate the corresponding ledger entries for the updated transaction    
     """ 
 
-    if kwargs.get('amount'):
+    new_descr_str = _("[MOD]")
+    if kwargs.get('amount') is not None:
         transaction.amount = kwargs['amount']
+        new_descr_str += _(" new amount=%s") % transaction.amount
 
     if kwargs.get('date'):
         transaction.date = kwargs['date']
+        new_descr_str += _(" new date=%s") % transaction.date
  
+    description = _("%(descr)s. %(new_descr)s.") % {
+        'new_descr' : new_descr_str,
+        'descr' : transaction.description
+    }
+    transaction.description = description
+    
     ## do all other update stuff.... with kwargs....
     transaction.save()
     return transaction
