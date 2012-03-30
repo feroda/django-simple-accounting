@@ -27,7 +27,7 @@ def transaction_details(transaction):
     Take a ``Transaction`` model instance and return a detailed, human-readable string representation of it.
     """
     display_str = ""
-    display_str += "Trasanction # %s\n\n" % transaction.pk
+    display_str += "Trasanction # pk=%s\n\n" % transaction.pk
     display_str += "issuer: %s\n" % transaction.issuer
     display_str += "issued on: %s\n" % transaction.date
     display_str += "description %s\n" % transaction.description
