@@ -23,10 +23,10 @@ def create_basic_account_types(sender, app, created_models, verbosity, interacti
     # execute IFF the DB table for the ``AccountType`` model has just been created
     if AccountType in created_models:  
         # create basic account types
-        AccountType.objects.create(name='ROOT', base_type=AccountType.ROOT)
-        AccountType.objects.create(name='INCOME', base_type=AccountType.INCOME)
-        AccountType.objects.create(name='EXPENSE', base_type=AccountType.EXPENSE)
-        AccountType.objects.create(name='ASSET', base_type=AccountType.ASSET)
-        AccountType.objects.create(name='LIABILITY', base_type=AccountType.LIABILITY)    
+        AccountType.objects.get_or_create(name='ROOT', base_type=AccountType.ROOT)
+        AccountType.objects.get_or_create(name='INCOME', base_type=AccountType.INCOME)
+        AccountType.objects.get_or_create(name='EXPENSE', base_type=AccountType.EXPENSE)
+        AccountType.objects.get_or_create(name='ASSET', base_type=AccountType.ASSET)
+        AccountType.objects.get_or_create(name='LIABILITY', base_type=AccountType.LIABILITY)    
 
 post_syncdb.connect(create_basic_account_types, sender=simple_accounting.models)
