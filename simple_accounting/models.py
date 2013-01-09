@@ -31,7 +31,7 @@ from simple_accounting.fields import CurrencyField
 from simple_accounting.managers import AccountManager, TransactionManager
 from simple_accounting.exceptions import MalformedAccountTree, SubjectiveAPIError, InvalidAccountingOperation, MalformedPathString
 
-import datetime
+import datetime, os
 
 
 class Subject(models.Model):
@@ -463,6 +463,30 @@ class AccountSystem(models.Model):
         """
         Account.objects.create(system=self, parent=None, name='', kind=account_type.root, is_placeholder=True)
         
+    def get_or_create_account(self, parent_path, name, kind, is_placeholder=False):
+        """Get or create an account. This method is useful for initializing the account system.
+
+        I.e: in the ``setup_accounting`` method.
+
+        If the ``setup_accounting`` method is idempotent, it can be called on each ``post_syncdb``
+        signal handling. This way we can easily add new accounts we need during software evolution. 
+
+        """
+
+        path = os.path.join(parent_path, name)
+        try:
+            account = self[path]
+        except Account.DoesNotExist as e:
+            self.add_account(
+                parent_path=parent_path, name=name, kind=kind, is_placeholder=is_placeholder
+            )
+            account = self[path]
+            created = True
+        else:
+            created = False
+
+        return account, created
+
            
 class Account(models.Model):
     """
