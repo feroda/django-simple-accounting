@@ -547,12 +547,14 @@ class Account(models.Model):
         """
         The money balance of this account (as a signed Decimal number).
         """
-        if not getattr(self, '_balance', None):
-            balance = 0
-            for entry in self.ledger_entries:
-                balance += entry.amount
-            self._balance = balance
-        return self._balance
+        #KO LF: too slow 
+        #KO: if not getattr(self, '_balance', None):
+        #KO:     balance = 0
+        #KO:    for entry in self.ledger_entries:
+        #KO:        balance += entry.amount
+        #KO:    self._balance = balance
+        #KO: return self._balance
+        return self.ledger_entries[-1].balance_snapshot
     
     @property
     def path(self):
@@ -1098,6 +1100,8 @@ class LedgerEntry(models.Model):
     entry_id = models.PositiveIntegerField(null=True, blank=True, editable=False)
     # the amount of money flowing 
     amount = CurrencyField()
+    # cached balance. Needed to avoid balance coumputation each time 
+    balance_snapshot = CurrencyField(null=True)
     
     @property
     def date(self):
