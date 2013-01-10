@@ -1,3 +1,8 @@
+Main Author
+===========
+
+Lorenzo Franceschini <lorenzo.franceschini@informatetica.it>
+
 Overwiew
 ========
 ``django-accounting`` is a simple accounting applications for Django.

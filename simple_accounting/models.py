@@ -554,7 +554,7 @@ class Account(models.Model):
         #KO:        balance += entry.amount
         #KO:    self._balance = balance
         #KO: return self._balance
-        return self.ledger_entries[-1].balance_snapshot
+        return self.ledger_entries[-1].balance_current
     
     @property
     def path(self):
@@ -1101,7 +1101,7 @@ class LedgerEntry(models.Model):
     # the amount of money flowing 
     amount = CurrencyField()
     # cached balance. Needed to avoid balance coumputation each time 
-    balance_snapshot = CurrencyField(null=True)
+    balance_current = CurrencyField(null=True)
     
     @property
     def date(self):
@@ -1147,9 +1147,23 @@ class LedgerEntry(models.Model):
         # if this entry is saved to the DB for the first time,
         # set its ID in the ledger to the first available value
         if not self.pk:
+            # ERROR LF: this is bug prone for race conditions on concurrent operations.
+            # Change DB field necessary, see how SEQUENCE PostgreSQL database field works.
+            # Or simpler, apply a lock
             self.entry_id = self.next_entry_id_for_ledger() 
         # perform model validation
         self.full_clean()
+
+        # Programmatically set the current balance
+        self.balance_current = self.amount
+        try:
+            last_lg = LedgerEntry.objects.latest('entry_id')
+        except LedgerEntry.DoesNotExist as e:
+            #OK this is the first ledger entry
+            pass
+        else:
+            self.balance_current += last_lg.balance_current
+
         super(LedgerEntry, self).save(*args, **kwargs)
       
     def next_entry_id_for_ledger(self):
@@ -1159,7 +1173,7 @@ class LedgerEntry(models.Model):
         existing_entries = self.account.ledger_entries
         try:
             next_id = max([entry.id for entry in existing_entries]) + 1
-        except ValueError:
+        except ValueError as e:
             next_id = 1
         return next_id
         

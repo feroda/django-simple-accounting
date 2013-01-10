@@ -1,0 +1,4 @@
+10.01.2013 Luca Ferroni <luca@befair.it>
+
+    * Added balance_current field to LedgerEntry
+
