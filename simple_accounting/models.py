@@ -554,7 +554,10 @@ class Account(models.Model):
         #KO:        balance += entry.amount
         #KO:    self._balance = balance
         #KO: return self._balance
-        return self.ledger_entries[-1].balance_current
+        try:
+            return self.ledger_entries.latest('entry_id').balance_current
+        except Exception as e:
+            return 0
     
     @property
     def path(self):
@@ -1151,18 +1154,19 @@ class LedgerEntry(models.Model):
             # Change DB field necessary, see how SEQUENCE PostgreSQL database field works.
             # Or simpler, apply a lock
             self.entry_id = self.next_entry_id_for_ledger() 
-        # perform model validation
-        self.full_clean()
 
         # Programmatically set the current balance
         self.balance_current = self.amount
         try:
-            last_lg = LedgerEntry.objects.latest('entry_id')
+            lg_previous = self.account.ledger_entries.latest('entry_id')
         except LedgerEntry.DoesNotExist as e:
             #OK this is the first ledger entry
             pass
         else:
-            self.balance_current += last_lg.balance_current
+            self.balance_current += lg_previous.balance_current
+
+        # perform model validation
+        self.full_clean()
 
         super(LedgerEntry, self).save(*args, **kwargs)
       
