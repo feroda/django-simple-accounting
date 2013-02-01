@@ -1156,14 +1156,23 @@ class LedgerEntry(models.Model):
             self.entry_id = self.next_entry_id_for_ledger() 
 
         # Programmatically set the current balance
-        self.balance_current = self.amount
+        # KO: we do this later along with others
+        # self.balance_current = self.amount
+
         try:
-            lg_previous = self.account.ledger_entries.latest('entry_id')
+            lg_entries_previous = self.account.ledger_entries.order_by('entry_id')
         except LedgerEntry.DoesNotExist as e:
             #OK this is the first ledger entry
             pass
         else:
-            self.balance_current += lg_previous.balance_current
+            # Redo all increments as a security mesaure to avoid
+            # tampering of last balance, but ... do we really need this 
+            # security measure? Is it ok to redo basing on amount because balance
+            # is an inherited attribute
+            for entry in lg_entries_previous:
+                if entry.entry_id <= self.entry_id:
+                    self.balance_current = (self.balance_current or 0) + entry.amount
+
 
         # perform model validation
         self.full_clean()
