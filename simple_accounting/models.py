@@ -1147,6 +1147,7 @@ class LedgerEntry(models.Model):
         pass
     
     def save(self, *args, **kwargs):
+        
         # if this entry is saved to the DB for the first time,
         # set its ID in the ledger to the first available value
         if not self.pk:
@@ -1158,8 +1159,21 @@ class LedgerEntry(models.Model):
         # Programmatically set the current balance
         self.balance_current = self.amount
 
+        entries = self.account.ledger_entries.order_by('-entry_id')
+        if self.pk:
+            # WARNING: if self is not the last entry for the account
+            # raise InvalidAccountingOperation
+            if not len(entries) or self.pk != entries[0].pk:
+                raise InvalidAccountingOperation(
+                    ugettext("You cannot modify an entry which is not the latter for this account"
+                ))
+            else:
+                entry_i = 1
+        else:
+            entry_i = 0
+
         try:
-            lg_entry_previous = self.account.ledger_entries.order_by('-entry_id')[0]
+            lg_entry_previous = entries[entry_i]
         except LedgerEntry.DoesNotExist as e:
             #OK this is the first ledger entry
             pass
