@@ -409,13 +409,17 @@ def update_transaction(transaction, **kwargs):
     """ 
 
     new_descr_str = _("[MOD]")
-    if kwargs.get('amount') is not None:
+    if kwargs.has_key('amount'):
+        new_descr_str += _(" old_amount=%s -> new_amount=%s") % (
+            transaction.amount, kwargs['amount']
+        )
         transaction.amount = kwargs['amount']
-        new_descr_str += _(" new amount=%s") % transaction.amount
 
-    if kwargs.get('date'):
+    if kwargs.has_key('date'):
+        new_descr_str += _(" old_date=%s -> new_date=%s") % (
+            transaction.date, kwargs['date']
+        )
         transaction.date = kwargs['date']
-        new_descr_str += _(" new date=%s") % transaction.date
  
     description = _("%(descr)s. %(new_descr)s.") % {
         'new_descr' : new_descr_str,
