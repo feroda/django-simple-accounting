@@ -555,7 +555,7 @@ class Account(models.Model):
         #KO:    self._balance = balance
         #KO: return self._balance
         try:
-            return self.ledger_entries.latest('entry_id').balance_current
+            return self.ledger_entries.order_by('-entry_id')[0].balance_current
         except Exception as e:
             return 0
     
