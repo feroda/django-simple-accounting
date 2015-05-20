@@ -30,6 +30,16 @@ class TransactionManager(models.Manager):
     """
     A custom manager class for the ``Transaction`` model.
     """
+
+    def get_empty_query_set(self):
+        # DEPRECATED: to be removed when our projects that use this
+        # application are compatible with Django 1.7
+        try:
+            return self.none()
+        except AttributeError as e:
+            # Django < 1.6
+            return super(TransactionManager, self).get_empty_query_set()
+
     def get_by_reference(self, refs):
         """
         Take an iterable of model instances (``refs``) and return the queryset
