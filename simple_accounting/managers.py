@@ -16,7 +16,7 @@
 
 from django.db import models
 
-from simple_accounting.lib import queryset_from_iterable 
+from simple_accounting.lib import queryset_from_iterable
 
 
 class AccountManager(models.Manager):
@@ -31,32 +31,23 @@ class TransactionManager(models.Manager):
     A custom manager class for the ``Transaction`` model.
     """
 
-    def get_empty_query_set(self):
-        # DEPRECATED: to be removed when our projects that use this
-        # application are compatible with Django 1.7
-        try:
-            return self.none()
-        except AttributeError as e:
-            # Django < 1.6
-            return super(TransactionManager, self).get_empty_query_set()
-
     def get_by_reference(self, refs):
         """
         Take an iterable of model instances (``refs``) and return the queryset
-        of ``Transaction``s referring to those instances.        
+        of ``Transaction``s referring to those instances.
         Only transactions which refer to *all* passed instances are returned.
         If no transaction satisfying this condition exists, return the empty queryset.
         """
         from django.contrib.contenttypes.models import ContentType
         from simple_accounting.models import TransactionReference
         # FIXME: refine implementation
-        qs = self.get_empty_query_set()
+        qs = self.none()
         transactions = set(self.get_query_set())
         for ref in refs:
             ct = ContentType.objects.get_for_model(ref)
             obj_id = ref.pk
             trefs = TransactionReference.objects.filter(content_type=ct, object_id=obj_id)
-            transactions &= set([tref.transaction for tref in trefs])        
+            transactions &= set([tref.transaction for tref in trefs])
         if transactions:
             qs = queryset_from_iterable(self.model, transactions)
         return qs
